@@ -59,8 +59,23 @@ const drop = $('#dropzone'); drop.addEventListener('click', () => $('#file-input
 $('#url-load').addEventListener('click', () => { const value=$('#media-url').value.trim(); try { const u=new URL(value); if(u.protocol!=='https:') throw 0; demo=false; preview(u.hostname + u.pathname.slice(-24), 'video/url', 0, ''); } catch { error('Enter a valid direct HTTPS media URL.'); } });
 document.querySelectorAll('.demo-case').forEach(c=>c.addEventListener('click',()=>{ document.querySelectorAll('.demo-case').forEach(x=>x.classList.remove('selected-demo')); c.classList.add('selected-demo'); demo=true; preview(`${c.dataset.case}-case.mp4`, c.dataset.case==='voice'?'audio/demo':'video/demo', 7.8e6); }));
 
-function evidenceCard([level,title,copy,source,limit], isDemo) { return `<article class="evidence-card glass"><div class="evidence-top"><span class="strength ${level.toLowerCase()}">${level}</span><button aria-label="Evidence limitations" title="${limit}">i</button></div><h4>${title}</h4><p>${copy}</p><footer><span>${source}</span><span>${isDemo ? 'Demo' : 'Local inspection'}</span></footer></article>`; }
+function evidenceCard([level,title,copy,source,limit,timestamp,bbox], isDemo) { 
+  const timeAttr = typeof timestamp === 'number' ? `data-time="${timestamp}" style="cursor:pointer" title="Click to seek media"` : '';
+  const bboxAttr = bbox ? `data-bbox='${JSON.stringify(bbox)}'` : '';
+  return `<article class="evidence-card glass" ${timeAttr} ${bboxAttr}><div class="evidence-top"><span class="strength ${level.toLowerCase()}">${level}</span><button aria-label="Evidence limitations" title="${limit}">i</button></div><h4>${title}</h4><p>${copy}</p><footer><span>${source}</span><span>${isDemo ? 'Demo' : 'Local inspection'}</span></footer></article>`; 
+}
 async function runLiveAnalysis(file) {
+  if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
+    const formData = new FormData();
+    formData.append('media', file);
+    formData.append('classes', file.type.startsWith('audio/') ? 'ai_generated_audio' : 'deepfake,ai_generated_video');
+    const started = await fetch('/api/hive/analyze', { method: 'POST', body: formData });
+    const reportText = await started.text();
+    const report = reportText ? JSON.parse(reportText) : {};
+    if (!started.ok) throw new Error(report.error || report.message || 'The analysis service did not return a response.');
+    return { isHive: true, raw: report };
+  }
+
   const started = await fetch('/api/analyze', { method:'POST', headers:{'content-type':file.type, 'x-veritas-filename':encodeURIComponent(file.name)}, body:file });
   const startedText = await started.text();
   const job = startedText ? JSON.parse(startedText) : {};
@@ -77,22 +92,79 @@ async function runLiveAnalysis(file) {
 }
 function populateReport(liveResult = null, liveError = '') {
   const usingDemo = demo;
-  const usingLive = Boolean(liveResult?.resultsSummary);
-  const liveStatus = liveResult?.resultsSummary?.status || '';
+  const usingLive = Boolean(liveResult && !liveError);
+  const isHive = liveResult?.isHive;
+  
+  let liveStatus = liveResult?.resultsSummary?.status || '';
   let liveScore = liveResult?.resultsSummary?.metadata?.finalScore ?? liveResult?.resultsSummary?.score;
+  let hiveEvidenceArr = [];
+  let hiveProviderStr = isHive ? 'Hive AI' : 'Reality Defender';
+
+  if (isHive) {
+    let maxScore = 0;
+    let anyDeepfake = false;
+    let anyAiGen = false;
+    const outputs = liveResult.raw?.status?.[0]?.response?.output || [];
+    
+    outputs.forEach(out => {
+      const time = out.time || 0;
+      let highestClass = null;
+      let highestScore = 0;
+      let box = out.bounding_box || null;
+      
+      (out.classes || []).forEach(c => {
+        if (['yes_deepfake', 'ai_generated'].includes(c.class) && c.score > highestScore) {
+          highestScore = c.score;
+          highestClass = c.class;
+        }
+      });
+      
+      if (highestClass) {
+        if (highestScore > maxScore) maxScore = highestScore;
+        if (highestClass === 'yes_deepfake') anyDeepfake = true;
+        if (highestClass === 'ai_generated') anyAiGen = true;
+        
+        const evidenceObj = {
+          type: selected?.type?.split('/')[0] || 'media',
+          provider: 'hive',
+          timestamp: time,
+          classification: highestClass,
+          confidence: highestScore,
+          bounding_box: box
+        };
+        
+        let strength = highestScore > 0.8 ? 'HIGH' : highestScore > 0.5 ? 'MODERATE' : 'LOW';
+        let title = highestClass === 'yes_deepfake' ? 'Deepfake detected' : 'AI-generated content detected';
+        let desc = `Model confidence: ${Math.round(highestScore * 100)}% at timestamp ${time}s.`;
+        hiveEvidenceArr.push([strength, title, desc, 'Hive AI', 'AI detection models are probabilistic.', time, box]);
+      }
+    });
+
+    liveScore = maxScore;
+    liveStatus = maxScore > 0.7 ? 'FAKE' : maxScore > 0.4 ? 'SUSPICIOUS' : 'AUTHENTIC';
+    
+    if (hiveEvidenceArr.length === 0) {
+      hiveEvidenceArr.push(['LOW', 'No manipulation detected', 'Hive AI analyzed the media and found no strong signals of AI-generation or deepfakes.', 'Hive AI', 'No detector is 100% accurate.']);
+    }
+  }
+
   if (typeof liveScore === 'number' && liveScore <= 1) liveScore = Math.round(liveScore * 100);
+
   const localEvidence = [
-    ['OBSERVED','File inspection', `${selected.type || 'Unknown type'}${selected.width ? ` · ${selected.width} × ${selected.height} pixels` : ''} · ${bytes(selected.size)}.`, 'Browser file inspector', 'This is a file property, not an authenticity signal.'],
+    ['OBSERVED','File inspection', `${selected?.type || 'Unknown type'}${selected?.width ? ` · ${selected.width} × ${selected.height} pixels` : ''} · ${selected?.size ? bytes(selected.size) : ''}.`, 'Browser file inspector', 'This is a file property, not an authenticity signal.'],
     ['UNKNOWN','AI-generation assessment unavailable', 'No live image-forensics provider is configured in this build, so VERITAS cannot assess whether this media is AI-generated.', 'Image detector', 'Connect a trusted detector provider before drawing a conclusion.'],
     ['UNKNOWN','Provenance unavailable', 'No live source-search or provenance provider is connected, so no source trail is inferred.', 'Source search', 'A missing source result is not evidence of manipulation.'],
     ['UNKNOWN','Metadata not inspected', 'This browser-only preview does not read embedded EXIF or container metadata.', 'Metadata analyzer', 'Metadata can be absent for ordinary reasons.']
   ];
-  const liveEvidence = [['LIVE','Reality Defender ensemble', `Provider status: ${liveStatus || 'processing'}${Number.isFinite(liveScore) ? ` · ensemble score ${liveScore}%` : ''}.`, 'Reality Defender', 'A provider result is probabilistic and should be evaluated with other evidence.']];
+  
+  let liveEvidence = isHive ? hiveEvidenceArr : [['LIVE','Reality Defender ensemble', `Provider status: ${liveStatus || 'processing'}${Number.isFinite(liveScore) ? ` · ensemble score ${liveScore}%` : ''}.`, 'Reality Defender', 'A provider result is probabilistic and should be evaluated with other evidence.']];
+  
   $('#evidence-grid').innerHTML = (usingDemo ? evidence : usingLive ? liveEvidence : localEvidence).map(x => evidenceCard(x, usingDemo)).join('');
   $('#evidence-heading').textContent = usingDemo ? 'Why we think this' : usingLive ? 'What the live detector observed' : 'What we observed locally';
-  $('#report-badge').innerHTML = usingDemo ? '<i></i> DEMO ANALYSIS · SIMULATED PROVIDER OUTPUT' : usingLive ? '<i></i> LIVE ANALYSIS · REALITY DEFENDER' : '<i></i> LOCAL INSPECTION · LIVE DETECTOR ERROR';
+  $('#report-badge').innerHTML = usingDemo ? '<i></i> DEMO ANALYSIS · SIMULATED PROVIDER OUTPUT' : usingLive ? `<i></i> LIVE ANALYSIS · ${hiveProviderStr.toUpperCase()}` : '<i></i> LOCAL INSPECTION · LIVE DETECTOR ERROR';
   $('#report-verdict').innerHTML = usingDemo ? 'Likely <span>manipulated.</span>' : usingLive ? (liveStatus === 'FAKE' ? 'Likely <span>manipulated.</span>' : liveStatus === 'AUTHENTIC' ? 'No deepfake <span>detected.</span>' : `Result <span>${liveStatus.toLowerCase().replaceAll('_',' ')}.</span>`) : 'Result <span>inconclusive.</span>';
-  $('#report-summary').textContent = usingDemo ? 'Multiple independent signals indicate that this video may have been altered. Review the evidence before relying on or sharing it.' : usingLive ? `Reality Defender returned ${liveStatus}. This is a provider signal, not absolute proof; review the available evidence and limitations before sharing.` : `Your file was inspected locally, but the live detector did not complete: ${liveError || 'Unknown error.'}`;
+  $('#report-summary').textContent = usingDemo ? 'Multiple independent signals indicate that this video may have been altered. Review the evidence before relying on or sharing it.' : usingLive ? `${hiveProviderStr} returned ${liveStatus}. This is a provider signal, not absolute proof; review the available evidence and limitations before sharing.` : `Your file was inspected locally, but the live detector did not complete: ${liveError || 'Unknown error.'}`;
+  
   const demoScore = Math.floor(Math.random() * 12 + 84);
   const actualScore = usingDemo ? demoScore : usingLive && Number.isFinite(liveScore) ? liveScore : 0;
   $('#confidence-value').innerHTML = usingDemo || (usingLive && Number.isFinite(liveScore)) ? `${actualScore}<sup>%</sup>` : '—';
@@ -102,14 +174,74 @@ function populateReport(liveResult = null, liveError = '') {
   if (gaugeValue) gaugeValue.style.strokeDashoffset = usingDemo || (usingLive && Number.isFinite(liveScore)) ? 314 - (314 * (actualScore / 100)) : 314;
   $('#media-authenticity').textContent = usingDemo ? 'LIKELY MANIPULATED' : usingLive ? liveStatus.replaceAll('_',' ') : 'INCONCLUSIVE';
   $('#media-authenticity').className = usingDemo || liveStatus === 'FAKE' || liveStatus === 'SUSPICIOUS' ? 'risk' : 'unknown';
-  $('#media-authenticity-copy').textContent = usingDemo ? 'Based on simulated multi-signal analysis.' : usingLive ? 'Based on a live Reality Defender ensemble result.' : 'No live forensic result was returned.';
+  $('#media-authenticity-copy').textContent = usingDemo ? 'Based on simulated multi-signal analysis.' : usingLive ? `Based on a live ${hiveProviderStr} result.` : 'No live forensic result was returned.';
   $('#source-credibility').textContent = 'UNVERIFIED';
   $('#source-credibility-copy').textContent = usingDemo ? 'No live source provider connected.' : 'No source-search provider is connected.';
   $('#context-status').textContent = 'UNKNOWN';
   $('#context-status-copy').textContent = usingDemo ? 'Claim evidence was not supplied.' : 'No contextual claim was supplied.';
-  $('#inspection-title').innerHTML = usingDemo ? 'Frame 147 <span class="mono">00:04.90</span>' : `Uploaded ${selected.type?.split('/')[0] || 'media'} <span class="mono">LOCAL PREVIEW</span>`;
+  $('#inspection-title').innerHTML = usingDemo ? 'Frame 147 <span class="mono">00:04.90</span>' : `Uploaded ${selected?.type?.split('/')[0] || 'media'} <span class="mono">LOCAL PREVIEW</span>`;
   $('#inspection-copy').textContent = usingDemo ? 'Inspectable evidence is only shown where a detector provides it. This demonstration uses a simulated frame marker.' : 'This is your original local preview. No heatmap or altered region is drawn because a detector has not supplied one.';
-  $('#inspection-media').innerHTML = selected.type?.startsWith('image/') && selected.url ? `<img class="inspection-image" src="${selected.url}" alt="Uploaded media: ${selected.name}">` : usingDemo ? '<div class="frame-noise"></div><div class="face-box"><span>FACE / MOUTH</span></div><div class="frame-timeline"><i></i><i class="hot"></i><i></i><i></i></div>' : `<div class="inspection-placeholder"><span>${selected.type?.startsWith('audio') ? '⌁' : '▶'}</span><b>${selected.name}</b><small>Preview available in your browser</small></div>`;
+  
+  if (usingDemo) {
+    $('#inspection-media').innerHTML = '<div class="frame-noise"></div><div class="face-box"><span>FACE / MOUTH</span></div><div class="frame-timeline"><i></i><i class="hot"></i><i></i><i></i></div>';
+  } else if (selected?.type?.startsWith('image/') && selected?.url) {
+    $('#inspection-media').innerHTML = `<img class="inspection-image" src="${selected.url}" alt="Uploaded media: ${selected.name}">`;
+  } else if (selected?.type?.startsWith('video/') && selected?.url) {
+    $('#inspection-media').innerHTML = `<div style="position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#000; border-radius:10px;"><video id="media-player" src="${selected.url}" controls style="max-width:100%; max-height:100%;"></video><div id="bbox-overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></div></div>`;
+  } else if (selected?.type?.startsWith('audio/') && selected?.url) {
+    $('#inspection-media').innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:20px;"><span>⌁</span><b>${selected.name}</b><audio id="media-player" src="${selected.url}" controls style="width:80%;"></audio></div>`;
+  } else {
+    $('#inspection-media').innerHTML = `<div class="inspection-placeholder"><span>${selected?.type?.startsWith('audio') ? '⌁' : '▶'}</span><b>${selected?.name}</b><small>Preview available in your browser</small></div>`;
+  }
+
+  $('#evidence-grid').onclick = (e) => {
+    const card = e.target.closest('.evidence-card');
+    if (!card || !card.dataset.time) return;
+    
+    // Clear previous bounding boxes
+    const bboxOverlay = document.getElementById('bbox-overlay');
+    if (bboxOverlay) bboxOverlay.innerHTML = '';
+    
+    const player = document.getElementById('media-player');
+    if (player) {
+      player.currentTime = parseFloat(card.dataset.time);
+      player.play().catch(() => {});
+      player.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      // Draw BBox if it exists
+      if (card.dataset.bbox && bboxOverlay) {
+        try {
+          const bbox = JSON.parse(card.dataset.bbox);
+          const [yMin, xMin, yMax, xMax] = bbox; // Hive format: [top, left, bottom, right]
+          
+          const boxDiv = document.createElement('div');
+          boxDiv.style.position = 'absolute';
+          boxDiv.style.top = `${yMin * 100}%`;
+          boxDiv.style.left = `${xMin * 100}%`;
+          boxDiv.style.width = `${(xMax - xMin) * 100}%`;
+          boxDiv.style.height = `${(yMax - yMin) * 100}%`;
+          boxDiv.style.border = '2px solid #ff4757';
+          boxDiv.style.backgroundColor = 'rgba(255, 71, 87, 0.1)';
+          boxDiv.style.pointerEvents = 'none';
+          
+          const label = document.createElement('span');
+          label.textContent = 'DETECTED FACE';
+          label.style.position = 'absolute';
+          label.style.top = '-20px';
+          label.style.left = '0';
+          label.style.color = '#fff';
+          label.style.background = '#ff4757';
+          label.style.fontSize = '10px';
+          label.style.padding = '2px 4px';
+          label.style.fontWeight = 'bold';
+          
+          boxDiv.appendChild(label);
+          bboxOverlay.appendChild(boxDiv);
+        } catch (err) {}
+      }
+    }
+  };
+
   $('#inspect').textContent = usingDemo ? 'View frame comparison →' : 'View original preview →';
   $('#modal-media').innerHTML = !usingDemo && selected.type?.startsWith('image/') && selected.url ? `<img class="inspection-image" src="${selected.url}" alt="Uploaded media: ${selected.name}">` : '<div class="face-box"><span>SIMULATED REGION</span></div>';
   $('#modal-title').textContent = usingDemo ? 'Frame comparison' : 'Original uploaded image';
