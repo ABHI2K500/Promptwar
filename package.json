@@ -1,0 +1,7 @@
+{
+  "name": "veritas-forensics",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "start": "vite --host 0.0.0.0", "dev": "vite --host 0.0.0.0", "build": "vite build", "test": "vitest run" },
+  "devDependencies": { "vite": "^6.1.0", "vitest": "^3.0.0" }
+}
