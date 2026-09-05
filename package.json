@@ -6,7 +6,8 @@
     "start": "vite --host 0.0.0.0",
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "evaluate": "node scripts/evaluate.js"
   },
   "devDependencies": {
     "vite": "^6.1.0",
