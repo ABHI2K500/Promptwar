@@ -79,7 +79,8 @@ function populateReport(liveResult = null, liveError = '') {
   const usingDemo = demo;
   const usingLive = Boolean(liveResult?.resultsSummary);
   const liveStatus = liveResult?.resultsSummary?.status || '';
-  const liveScore = liveResult?.resultsSummary?.metadata?.finalScore;
+  let liveScore = liveResult?.resultsSummary?.metadata?.finalScore ?? liveResult?.resultsSummary?.score;
+  if (typeof liveScore === 'number' && liveScore <= 1) liveScore = Math.round(liveScore * 100);
   const localEvidence = [
     ['OBSERVED','File inspection', `${selected.type || 'Unknown type'}${selected.width ? ` · ${selected.width} × ${selected.height} pixels` : ''} · ${bytes(selected.size)}.`, 'Browser file inspector', 'This is a file property, not an authenticity signal.'],
     ['UNKNOWN','AI-generation assessment unavailable', 'No live image-forensics provider is configured in this build, so VERITAS cannot assess whether this media is AI-generated.', 'Image detector', 'Connect a trusted detector provider before drawing a conclusion.'],
@@ -92,9 +93,13 @@ function populateReport(liveResult = null, liveError = '') {
   $('#report-badge').innerHTML = usingDemo ? '<i></i> DEMO ANALYSIS · SIMULATED PROVIDER OUTPUT' : usingLive ? '<i></i> LIVE ANALYSIS · REALITY DEFENDER' : '<i></i> LOCAL INSPECTION · LIVE DETECTOR ERROR';
   $('#report-verdict').innerHTML = usingDemo ? 'Likely <span>manipulated.</span>' : usingLive ? (liveStatus === 'FAKE' ? 'Likely <span>manipulated.</span>' : liveStatus === 'AUTHENTIC' ? 'No deepfake <span>detected.</span>' : `Result <span>${liveStatus.toLowerCase().replaceAll('_',' ')}.</span>`) : 'Result <span>inconclusive.</span>';
   $('#report-summary').textContent = usingDemo ? 'Multiple independent signals indicate that this video may have been altered. Review the evidence before relying on or sharing it.' : usingLive ? `Reality Defender returned ${liveStatus}. This is a provider signal, not absolute proof; review the available evidence and limitations before sharing.` : `Your file was inspected locally, but the live detector did not complete: ${liveError || 'Unknown error.'}`;
-  $('#confidence-value').innerHTML = usingDemo ? '89<sup>%</sup>' : usingLive && Number.isFinite(liveScore) ? `${liveScore}<sup>%</sup>` : '—';
+  const demoScore = Math.floor(Math.random() * 12 + 84);
+  const actualScore = usingDemo ? demoScore : usingLive && Number.isFinite(liveScore) ? liveScore : 0;
+  $('#confidence-value').innerHTML = usingDemo || (usingLive && Number.isFinite(liveScore)) ? `${actualScore}<sup>%</sup>` : '—';
   $('#confidence-label').textContent = usingDemo || usingLive ? 'confidence' : 'unavailable';
   $('#report-gauge').classList.toggle('unavailable-gauge', !usingDemo && !usingLive);
+  const gaugeValue = document.querySelector('#report-gauge .gauge-value');
+  if (gaugeValue) gaugeValue.style.strokeDashoffset = usingDemo || (usingLive && Number.isFinite(liveScore)) ? 314 - (314 * (actualScore / 100)) : 314;
   $('#media-authenticity').textContent = usingDemo ? 'LIKELY MANIPULATED' : usingLive ? liveStatus.replaceAll('_',' ') : 'INCONCLUSIVE';
   $('#media-authenticity').className = usingDemo || liveStatus === 'FAKE' || liveStatus === 'SUSPICIOUS' ? 'risk' : 'unknown';
   $('#media-authenticity-copy').textContent = usingDemo ? 'Based on simulated multi-signal analysis.' : usingLive ? 'Based on a live Reality Defender ensemble result.' : 'No live forensic result was returned.';
@@ -176,6 +181,57 @@ initPageLoader();
 let verificationAnimationId = null;
 let vRenderer = null, vScene = null, vCamera = null;
 let handleVResize = null;
+let vNN = null;
+
+function createNeuralNetwork(scene, pointCount = 150, maxDistance = 1.5, color = 0xb9a7ff) {
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(pointCount * 3);
+  const velocities = [];
+  for (let i = 0; i < pointCount; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * 5;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 5;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 5;
+    velocities.push(new THREE.Vector3((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02));
+  }
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const particles = new THREE.Points(geometry, new THREE.PointsMaterial({ color, size: 0.05, transparent: true, opacity: 0.8 }));
+  scene.add(particles);
+
+  const linesMaterial = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.15 });
+  const linesGeometry = new THREE.BufferGeometry();
+  const linesMesh = new THREE.LineSegments(linesGeometry, linesMaterial);
+  scene.add(linesMesh);
+
+  return { geometry, positions, velocities, linesGeometry, maxDistance, mesh: particles, linesMesh };
+}
+
+function updateNeuralNetwork(nn) {
+  const pos = nn.positions;
+  for (let i = 0; i < pos.length / 3; i++) {
+    pos[i * 3] += nn.velocities[i].x;
+    pos[i * 3 + 1] += nn.velocities[i].y;
+    pos[i * 3 + 2] += nn.velocities[i].z;
+    if (Math.abs(pos[i * 3]) > 3) nn.velocities[i].x *= -1;
+    if (Math.abs(pos[i * 3 + 1]) > 3) nn.velocities[i].y *= -1;
+    if (Math.abs(pos[i * 3 + 2]) > 3) nn.velocities[i].z *= -1;
+  }
+  nn.geometry.attributes.position.needsUpdate = true;
+
+  const linePositions = [];
+  for (let i = 0; i < pos.length / 3; i++) {
+    for (let j = i + 1; j < pos.length / 3; j++) {
+      const dx = pos[i * 3] - pos[j * 3];
+      const dy = pos[i * 3 + 1] - pos[j * 3 + 1];
+      const dz = pos[i * 3 + 2] - pos[j * 3 + 2];
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq < nn.maxDistance * nn.maxDistance) {
+        linePositions.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        linePositions.push(pos[j * 3], pos[j * 3 + 1], pos[j * 3 + 2]);
+      }
+    }
+  }
+  nn.linesGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+}
 
 function startVerificationAnimation() {
   const container = $('#verification-3d-canvas');
@@ -185,36 +241,22 @@ function startVerificationAnimation() {
   vScene = new THREE.Scene();
   const width = container.clientWidth || 800;
   const height = container.clientHeight || 300;
-  vCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+  vCamera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
   vRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   vRenderer.setSize(width, height);
   vRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   container.appendChild(vRenderer.domElement);
 
-  const geometry = new THREE.BoxGeometry(2.5, 2.5, 2.5);
-  const edges = new THREE.EdgesGeometry(geometry);
-  const material = new THREE.LineBasicMaterial({ color: 0x76d49b, transparent: true, opacity: 0.7 });
-  const cube = new THREE.LineSegments(edges, material);
-  vScene.add(cube);
-  
-  const planeGeo = new THREE.PlaneGeometry(4, 4);
-  const planeMat = new THREE.MeshBasicMaterial({ color: 0xb9a7ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
-  const laser = new THREE.Mesh(planeGeo, planeMat);
-  laser.rotation.x = Math.PI / 2;
-  vScene.add(laser);
+  vNN = createNeuralNetwork(vScene, 120, 1.3, 0x76d49b);
+  vCamera.position.set(0, 0, 4.5);
 
-  vCamera.position.set(5, 4, 6);
-  vCamera.lookAt(0, 0, 0);
-
-  let time = 0;
   const animate = () => {
     verificationAnimationId = requestAnimationFrame(animate);
-    cube.rotation.y += 0.01;
-    cube.rotation.x += 0.005;
-    
-    time += 0.04;
-    laser.position.y = Math.sin(time) * 1.8;
-    
+    updateNeuralNetwork(vNN);
+    vNN.mesh.rotation.y += 0.003;
+    vNN.linesMesh.rotation.y += 0.003;
+    vNN.mesh.rotation.x += 0.001;
+    vNN.linesMesh.rotation.x += 0.001;
     vRenderer.render(vScene, vCamera);
   };
   animate();
@@ -234,6 +276,10 @@ function startVerificationAnimation() {
 function stopVerificationAnimation() {
   if (verificationAnimationId) cancelAnimationFrame(verificationAnimationId);
   if (vRenderer) vRenderer.dispose();
+  if (vNN) {
+    vNN.geometry.dispose();
+    vNN.linesGeometry.dispose();
+  }
   if (handleVResize) window.removeEventListener('resize', handleVResize);
   const container = $('#verification-3d-canvas');
   if (container) container.innerHTML = '';
