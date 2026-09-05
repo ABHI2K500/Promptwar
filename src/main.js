@@ -163,7 +163,30 @@ function populateReport(liveResult = null, liveError = '') {
   $('#evidence-heading').textContent = usingDemo ? 'Why we think this' : usingLive ? 'What the live detector observed' : 'What we observed locally';
   $('#report-badge').innerHTML = usingDemo ? '<i></i> DEMO ANALYSIS · SIMULATED PROVIDER OUTPUT' : usingLive ? `<i></i> LIVE ANALYSIS · ${hiveProviderStr.toUpperCase()}` : '<i></i> LOCAL INSPECTION · LIVE DETECTOR ERROR';
   $('#report-verdict').innerHTML = usingDemo ? 'Likely <span>manipulated.</span>' : usingLive ? (liveStatus === 'FAKE' ? 'Likely <span>manipulated.</span>' : liveStatus === 'AUTHENTIC' ? 'No deepfake <span>detected.</span>' : `Result <span>${liveStatus.toLowerCase().replaceAll('_',' ')}.</span>`) : 'Result <span>inconclusive.</span>';
-  $('#report-summary').textContent = usingDemo ? 'Multiple independent signals indicate that this video may have been altered. Review the evidence before relying on or sharing it.' : usingLive ? `${hiveProviderStr} returned ${liveStatus}. This is a provider signal, not absolute proof; review the available evidence and limitations before sharing.` : `Your file was inspected locally, but the live detector did not complete: ${liveError || 'Unknown error.'}`;
+  let dynamicReason = '';
+  if (usingLive && ['FAKE', 'SUSPICIOUS'].includes(liveStatus)) {
+    if (isHive) {
+      const issues = [];
+      if (anyDeepfake) issues.push('facial manipulation consistent with a deepfake');
+      if (anyAiGen) issues.push('pixel patterns indicating fully AI-generated media');
+      
+      let timeText = '';
+      const flagTimes = hiveEvidenceArr.filter(e => e[0] === 'HIGH' || e[0] === 'MODERATE').map(e => e[5]).filter(t => t !== undefined);
+      if (flagTimes.length > 0) {
+        timeText = ` specifically around ${flagTimes.map(t => t + 's').join(', ')}`;
+      }
+      
+      dynamicReason = `The model detected ${issues.join(' and ')}${timeText}. `;
+    } else {
+      dynamicReason = `The image detector ensemble identified unnatural pixel patterns, inconsistent lighting, or compression artifacts typically found in synthetic media. `;
+    }
+  } else if (usingDemo) {
+    dynamicReason = `Simulated temporal inconsistency and face-geometry shifts indicate manipulation. `;
+  } else if (usingLive && liveStatus === 'AUTHENTIC') {
+    dynamicReason = `No significant traces of synthetic manipulation were found. `;
+  }
+  
+  $('#report-summary').textContent = usingDemo ? `${dynamicReason}Review the evidence before relying on or sharing it.` : usingLive ? `${dynamicReason}This is a ${hiveProviderStr} signal, not absolute proof; review the available evidence and limitations.` : `Your file was inspected locally, but the live detector did not complete: ${liveError || 'Unknown error.'}`;
   
   const demoScore = Math.floor(Math.random() * 12 + 84);
   const actualScore = usingDemo ? demoScore : usingLive && Number.isFinite(liveScore) ? liveScore : 0;
