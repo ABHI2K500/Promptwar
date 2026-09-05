@@ -5,11 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="VERITAS — evidence-led media verification." />
     <title>VERITAS — Evidence-led media verification</title>
+    <meta name="theme-color" content="#090b10" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f5f6fa" media="(prefers-color-scheme: light)">
+    <meta property="og:title" content="VERITAS — Evidence-led media verification">
+    <meta property="og:description" content="VERITAS analyzes digital media for signs of AI generation, manipulation, and misleading context.">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap">
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   </head>
   <body>
+    <div id="initial-loader">
+      <div class="loader-content"><span class="brand-mark" style="display:inline-grid;margin-right:12px">V</span>VERITAS<br><small>INITIALIZING SECURE ENVIRONMENT</small></div>
+    </div>
     <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
     <header class="nav"><a class="brand" href="#top" aria-label="VERITAS home"><span class="brand-mark">V</span> VERITAS</a><nav><a href="#method">Method</a><a href="#limits">Limitations</a><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☼</span><span class="theme-copy">Light</span></button><button class="text-button" id="demo-nav">Try demo</button></nav></header>
     <main id="top">
@@ -33,7 +43,7 @@
         <div class="section-kicker">START AN INVESTIGATION</div><h2>Bring the media.<br><span>We’ll show the evidence.</span></h2>
         <div class="upload-shell glass">
           <div class="upload-tabs" role="tablist"><button class="tab selected" role="tab" data-tab="file">Upload a file</button><button class="tab" role="tab" data-tab="url">Paste a URL</button><button class="tab demo-tab" role="tab" data-tab="demo">Demo cases</button></div>
-          <div class="panel" id="file-panel"><input id="file-input" type="file" accept="image/*,video/*,audio/*" hidden><div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose media file or drag it here"><div class="upload-icon">↑</div><strong>Drop media here, or <u>browse files</u></strong><p>Images, video, or audio · Up to 100 MB</p></div></div>
+          <div class="panel" id="file-panel"><input id="file-input" type="file" accept="image/*,video/*,audio/*" hidden aria-label="Upload media file"><div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose media file or drag it here"><div class="upload-icon" aria-hidden="true">↑</div><strong>Drop media here, or <u>browse files</u></strong><p>Images, video, or audio · Up to 100 MB</p></div></div>
           <div class="panel hidden" id="url-panel"><label for="media-url">Direct media URL</label><div class="url-row"><input id="media-url" type="url" placeholder="https://example.com/media.mp4"><button id="url-load" class="secondary">Preview</button></div><p class="field-note">Only direct HTTPS media links are accepted. URLs are validated before analysis.</p></div>
           <div class="panel hidden" id="demo-panel"><p class="field-note">Demo cases use simulated provider output. They never represent live forensic findings.</p><div class="demo-grid"><button class="demo-case" data-case="authentic"><i class="case-image authentic"></i><b>Authentic image</b><small>Provenance signals</small></button><button class="demo-case" data-case="generated"><i class="case-image generated"></i><b>AI-generated image</b><small>Visual synthesis</small></button><button class="demo-case selected-demo" data-case="deepfake"><i class="case-image deepfake"></i><b>Manipulated video</b><small>Temporal signals</small></button><button class="demo-case" data-case="voice"><i class="case-image voice"></i><b>Synthetic voice</b><small>Audio analysis</small></button></div></div>
           <div id="media-preview" class="preview hidden"></div><div id="upload-error" class="error hidden" role="alert"></div>
@@ -41,10 +51,10 @@
         </div>
       </section>
 
-      <section id="analysis" class="analysis hidden"><div class="analysis-head"><div><div class="section-kicker">ANALYSIS IN PROGRESS</div><h2>Following the evidence.</h2></div><div class="percent" id="percent">00%</div></div><div class="progress-line"><i id="progress-bar"></i></div><div class="stages" id="stages"></div><p class="analysis-disclaimer">In demo mode, stages are illustrative and findings are marked simulated.</p></section>
+      <section id="analysis" class="analysis hidden"><div class="analysis-head"><div><div class="section-kicker">ANALYSIS IN PROGRESS</div><h2>Following the evidence.</h2></div><div class="percent" id="percent">00%</div></div><div id="verification-3d-canvas" class="verification-canvas"></div><div class="progress-line"><i id="progress-bar"></i></div><div class="stages" id="stages"></div><p class="analysis-disclaimer">In demo mode, stages are illustrative and findings are marked simulated.</p></section>
 
       <section id="report" class="report hidden">
-        <div class="report-header"><div><div class="eyebrow amber" id="report-badge"><i></i> DEMO ANALYSIS · SIMULATED PROVIDER OUTPUT</div><p class="report-label">VERIFICATION REPORT <span class="mono">#VR-2048-19</span></p><h2 id="report-verdict">Likely <span>manipulated.</span></h2><p class="report-summary" id="report-summary">Multiple independent signals indicate that this video may have been altered. Review the evidence before relying on or sharing it.</p></div><div class="gauge" id="report-gauge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50"/><circle class="gauge-value" cx="60" cy="60" r="50"/></svg><div><b id="confidence-value">89<sup>%</sup></b><small id="confidence-label">confidence</small></div></div></div>
+        <div class="report-header"><div><div class="eyebrow amber" id="report-badge"><i></i> DEMO ANALYSIS · SIMULATED PROVIDER OUTPUT</div><p class="report-label">VERIFICATION REPORT <span class="mono">#VR-2048-19</span></p><h2 id="report-verdict">Likely <span>manipulated.</span></h2><p class="report-summary" id="report-summary">Multiple independent signals indicate that this video may have been altered. Review the evidence before relying on or sharing it.</p></div><div class="gauge" id="report-gauge"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50"/><circle class="gauge-value" cx="60" cy="60" r="50"/></svg><div><b id="confidence-value">89<sup>%</sup></b><small id="confidence-label">confidence</small></div></div></div>
         <div class="report-actions"><button class="secondary" data-scroll="evidence">View evidence</button><button class="secondary" data-scroll="sources">View sources</button><button class="secondary" id="export">Export report ↗</button><button class="primary" id="another">Analyze another</button></div>
         <div class="auth-grid"><article class="glass metric"><small>MEDIA AUTHENTICITY</small><strong class="risk" id="media-authenticity">LIKELY MANIPULATED</strong><p id="media-authenticity-copy">Based on simulated multi-signal analysis.</p></article><article class="glass metric"><small>SOURCE CREDIBILITY</small><strong class="unknown" id="source-credibility">UNVERIFIED</strong><p id="source-credibility-copy">No live source provider connected.</p></article><article class="glass metric"><small>CONTEXT</small><strong class="unknown" id="context-status">UNKNOWN</strong><p id="context-status-copy">Claim evidence was not supplied.</p></article></div>
         <section class="report-section" id="evidence"><div class="section-heading"><div><div class="section-kicker">EVIDENCE SUMMARY</div><h3 id="evidence-heading">Why we think this</h3></div><p>Each signal has a source and limitation. Missing metadata alone is never treated as evidence.</p></div><div class="evidence-grid" id="evidence-grid"></div></section>

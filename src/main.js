@@ -1,4 +1,5 @@
 import './style.css';
+import * as THREE from 'three';
 
 const $ = (s) => document.querySelector(s);
 const themeToggle = $('#theme-toggle');
@@ -35,7 +36,7 @@ function error(text='') { $('#upload-error').textContent = text; $('#upload-erro
 function bytes(v) { return v < 1e6 ? `${(v/1e3).toFixed(0)} KB` : `${(v/1e6).toFixed(1)} MB`; }
 function preview(name,type,size,url='', details={}) {
   selected = {name,type,size,url,...details}; error('');
-  const media = type.startsWith('image/') && url ? `<img src="${url}" alt="Selected media preview">` : `<div class="preview-art ${type.split('/')[0]}"><span>${type.startsWith('video') ? '▶' : type.startsWith('audio') ? '⌁' : '◈'}</span></div>`;
+  const media = type.startsWith('image/') && url ? `<img src="${url}" alt="Selected media preview" ${details.width ? `width="${details.width}" height="${details.height}"` : ''}>` : `<div class="preview-art ${type.split('/')[0]}"><span>${type.startsWith('video') ? '▶' : type.startsWith('audio') ? '⌁' : '◈'}</span></div>`;
   $('#media-preview').innerHTML = `${media}<div class="preview-info"><b>${name}</b><span>${type.split('/')[0].toUpperCase()} · ${bytes(size)}</span></div><button class="remove" aria-label="Remove selected media">×</button>`;
   $('#media-preview').classList.remove('hidden'); $('#analyze').disabled = false;
   $('.remove').addEventListener('click', clearSelection);
@@ -109,10 +110,131 @@ function populateReport(liveResult = null, liveError = '') {
   $('#modal-title').textContent = usingDemo ? 'Frame comparison' : 'Original uploaded image';
   $('#modal-copy').textContent = usingDemo ? 'This visual marker is part of the selected demo case and is not a live detector heatmap.' : 'This is your original file preview. VERITAS has not added a heatmap because no live detector supplied one.';
 }
-function startAnalysis() { if(!selected) return; const liveRun = !demo && selected.file ? runLiveAnalysis(selected.file) : Promise.resolve(null); $('#analysis').classList.remove('hidden'); $('#report').classList.add('hidden'); $('#analysis').scrollIntoView({behavior:'smooth'}); $('#stages').innerHTML = stages.map((x,i)=>`<div class="stage" id="stage-${i}"><b>${String(i+1).padStart(2,'0')}</b><span>${x}</span><i></i></div>`).join(''); let i=0; const advance=async()=>{ if(i) $(`#stage-${i-1}`).classList.remove('running'),$(`#stage-${i-1}`).classList.add('done'); if(i<stages.length){$(`#stage-${i}`).classList.add('running'); const p=Math.round((i+1)/stages.length*100);$('#percent').textContent=`${String(p).padStart(2,'0')}%`;$('#progress-bar').style.width=`${p}%`;i++;setTimeout(advance,430)}else{let liveResult=null,liveError='';try{liveResult=await liveRun}catch(error){liveError=error.message}populateReport(liveResult,liveError);setTimeout(()=>{$('#report').classList.remove('hidden');$('#report').scrollIntoView({behavior:'smooth'});},250)}}; advance(); }
+function startAnalysis() { if(!selected) return; const liveRun = !demo && selected.file ? runLiveAnalysis(selected.file) : Promise.resolve(null); $('#analysis').classList.remove('hidden'); $('#report').classList.add('hidden'); $('#analysis').scrollIntoView({behavior:'smooth'}); $('#stages').innerHTML = stages.map((x,i)=>`<div class="stage" id="stage-${i}"><b>${String(i+1).padStart(2,'0')}</b><span>${x}</span><i></i></div>`).join(''); let i=0; startVerificationAnimation(); const advance=async()=>{ if(i) $(`#stage-${i-1}`).classList.remove('running'),$(`#stage-${i-1}`).classList.add('done'); if(i<stages.length){$(`#stage-${i}`).classList.add('running'); const p=Math.round((i+1)/stages.length*100);$('#percent').textContent=`${String(p).padStart(2,'0')}%`;$('#progress-bar').style.width=`${p}%`;i++;setTimeout(advance,430)}else{let liveResult=null,liveError='';try{liveResult=await liveRun}catch(error){liveError=error.message}populateReport(liveResult,liveError); stopVerificationAnimation(); setTimeout(()=>{$('#analysis').classList.add('hidden'); $('#report').classList.remove('hidden');$('#report').scrollIntoView({behavior:'smooth'});},250)}}; advance(); }
 $('#analyze').addEventListener('click', startAnalysis);
 $('#another').addEventListener('click',()=>$('#verify').scrollIntoView({behavior:'smooth'}));
 document.querySelectorAll('[data-scroll]').forEach(b=>b.addEventListener('click',()=> $(`#${b.dataset.scroll}`).scrollIntoView({behavior:'smooth'})));
 $('#inspect').addEventListener('click',()=>$('#modal').showModal()); $('.modal-close').addEventListener('click',()=>$('#modal').close());
 $('#export').addEventListener('click',()=>{ const report = demo ? `VERITAS — Verification Report\n\nDEMO ANALYSIS · SIMULATED PROVIDER OUTPUT\nVerdict: Likely manipulated\nConfidence: 89%\n\nSummary: Multiple simulated signals indicate the video may have been altered.\n\nLimitations: This is a demo report. Detection is probabilistic and is not proof.` : `VERITAS — Verification Report\n\nLOCAL INSPECTION · LIVE DETECTORS UNAVAILABLE\nFile: ${selected?.name || 'Unknown'}\nVerdict: Inconclusive\nConfidence: Unavailable\n\nSummary: The file was inspected locally. No live forensic detector was configured, so VERITAS makes no authenticity claim.\n\nLimitations: AI detection is probabilistic; no detector, source-search, or metadata provider was run.`; const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([report],{type:'text/plain'}));a.download=demo?'veritas-demo-report.txt':'veritas-local-inspection.txt';a.click();URL.revokeObjectURL(a.href); });
 document.querySelectorAll('.tilt').forEach(card=>{card.addEventListener('pointermove',e=>{if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;card.style.transform=`perspective(1100px) rotateX(${-y*4}deg) rotateY(${x*5}deg) translateY(-3px)`});card.addEventListener('pointerleave',()=>card.style.transform='')});
+
+// --- 3D Loader Animations ---
+function initPageLoader() {
+  const container = $('#initial-loader');
+  if (!container) return;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.insertBefore(renderer.domElement, container.firstChild);
+
+  const geometry = new THREE.IcosahedronGeometry(2.5, 1);
+  const material = new THREE.MeshBasicMaterial({ color: 0xb9a7ff, wireframe: true, transparent: true, opacity: 0.3 });
+  const mesh = new THREE.Mesh(geometry, material);
+  scene.add(mesh);
+  camera.position.z = 6;
+
+  let animationId;
+  const animate = () => {
+    animationId = requestAnimationFrame(animate);
+    mesh.rotation.x += 0.003;
+    mesh.rotation.y += 0.005;
+    renderer.render(scene, camera);
+  };
+  animate();
+
+  const handleResize = () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  };
+  window.addEventListener('resize', handleResize);
+
+  const finishLoading = () => {
+    setTimeout(() => {
+      container.classList.add('loaded');
+      setTimeout(() => {
+        cancelAnimationFrame(animationId);
+        renderer.dispose();
+        geometry.dispose();
+        material.dispose();
+        window.removeEventListener('resize', handleResize);
+        container.remove();
+      }, 800);
+    }, 1500); 
+  };
+  
+  if (document.readyState === 'complete') {
+    finishLoading();
+  } else {
+    window.addEventListener('load', finishLoading);
+  }
+}
+initPageLoader();
+
+let verificationAnimationId = null;
+let vRenderer = null, vScene = null, vCamera = null;
+let handleVResize = null;
+
+function startVerificationAnimation() {
+  const container = $('#verification-3d-canvas');
+  if (!container) return;
+  container.innerHTML = ''; 
+
+  vScene = new THREE.Scene();
+  const width = container.clientWidth || 800;
+  const height = container.clientHeight || 300;
+  vCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+  vRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  vRenderer.setSize(width, height);
+  vRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(vRenderer.domElement);
+
+  const geometry = new THREE.BoxGeometry(2.5, 2.5, 2.5);
+  const edges = new THREE.EdgesGeometry(geometry);
+  const material = new THREE.LineBasicMaterial({ color: 0x76d49b, transparent: true, opacity: 0.7 });
+  const cube = new THREE.LineSegments(edges, material);
+  vScene.add(cube);
+  
+  const planeGeo = new THREE.PlaneGeometry(4, 4);
+  const planeMat = new THREE.MeshBasicMaterial({ color: 0xb9a7ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+  const laser = new THREE.Mesh(planeGeo, planeMat);
+  laser.rotation.x = Math.PI / 2;
+  vScene.add(laser);
+
+  vCamera.position.set(5, 4, 6);
+  vCamera.lookAt(0, 0, 0);
+
+  let time = 0;
+  const animate = () => {
+    verificationAnimationId = requestAnimationFrame(animate);
+    cube.rotation.y += 0.01;
+    cube.rotation.x += 0.005;
+    
+    time += 0.04;
+    laser.position.y = Math.sin(time) * 1.8;
+    
+    vRenderer.render(vScene, vCamera);
+  };
+  animate();
+  
+  handleVResize = () => {
+    if (!vCamera || !vRenderer || !container) return;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w===0 || h===0) return;
+    vCamera.aspect = w / h;
+    vCamera.updateProjectionMatrix();
+    vRenderer.setSize(w, h);
+  };
+  window.addEventListener('resize', handleVResize);
+}
+
+function stopVerificationAnimation() {
+  if (verificationAnimationId) cancelAnimationFrame(verificationAnimationId);
+  if (vRenderer) vRenderer.dispose();
+  if (handleVResize) window.removeEventListener('resize', handleVResize);
+  const container = $('#verification-3d-canvas');
+  if (container) container.innerHTML = '';
+}
