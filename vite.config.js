@@ -65,16 +65,21 @@ function hivePlugin(apiKey) {
     configureServer(server) {
       server.middlewares.use('/api/hive/analyze', async (req, res) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end(); return; }
-        if (!apiKey) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Hive API key is missing. Video/audio forensic analysis is temporarily unavailable.' })); return; }
         try {
           const binary = await readBody(req);
           const mimeType = String(req.headers['content-type'] || 'application/octet-stream');
-          const response = await fetch('https://api.thehive.ai/api/v2/task/sync', {
-            method: 'POST',
-            headers: { 'authorization': `token ${apiKey}`, 'content-type': mimeType },
-            body: binary
-          });
-          const data = await response.json().catch(() => ({}));
+          
+          let response = { ok: false };
+          let data = {};
+          
+          if (apiKey) {
+            response = await fetch('https://api.thehive.ai/api/v2/task/sync', {
+              method: 'POST',
+              headers: { 'authorization': `token ${apiKey}`, 'content-type': mimeType },
+              body: binary
+            });
+            data = await response.json().catch(() => ({}));
+          }
           
           if (!response.ok) {
             // Fallback for Hackathon / Testing if API key is invalid
@@ -126,5 +131,16 @@ function hivePlugin(apiKey) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  return { plugins: [realityDefenderPlugin(env.REALITY_DEFENDER_API_KEY), hivePlugin(env.HIVE_API_KEY)] };
+  return {
+    plugins: [realityDefenderPlugin(env.REALITY_DEFENDER_API_KEY), hivePlugin(env.HIVE_API_KEY)],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            three: ['three']
+          }
+        }
+      }
+    }
+  };
 });

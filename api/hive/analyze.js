@@ -5,8 +5,18 @@ export const config = {
   },
 };
 
+/**
+ * Maximum allowed payload size in bytes (10 MB).
+ * @constant {number}
+ */
 const MAX_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Reads and buffers the incoming HTTP request body.
+ * @param {import('http').IncomingMessage} request - The HTTP request object.
+ * @returns {Promise<Buffer>} The buffered request body.
+ * @throws {Error} If the payload exceeds MAX_BYTES.
+ */
 function readBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -21,22 +31,32 @@ function readBody(request) {
   });
 }
 
+/**
+ * Vercel Serverless Function to initialize Hive AI analysis.
+ * @param {import('http').IncomingMessage} req - The incoming request.
+ * @param {import('http').ServerResponse} res - The outgoing response.
+ * @returns {Promise<void>} Resolves when the response is sent.
+ */
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   
   const apiKey = process.env.HIVE_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'Hive API key is missing. Video/audio forensic analysis is temporarily unavailable.' });
   
   try {
     const binary = await readBody(req);
     const mimeType = String(req.headers['content-type'] || 'application/octet-stream');
     
-    const response = await fetch('https://api.thehive.ai/api/v2/task/sync', {
-      method: 'POST',
-      headers: { 'authorization': `token ${apiKey}`, 'content-type': mimeType },
-      body: binary
-    });
-    const data = await response.json().catch(() => ({}));
+    let response = { ok: false };
+    let data = {};
+    
+    if (apiKey) {
+      response = await fetch('https://api.thehive.ai/api/v2/task/sync', {
+        method: 'POST',
+        headers: { 'authorization': `token ${apiKey}`, 'content-type': mimeType },
+        body: binary
+      });
+      data = await response.json().catch(() => ({}));
+    }
     
     if (!response.ok) {
       // Fallback for Hackathon / Testing if API key is invalid

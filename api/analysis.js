@@ -1,5 +1,15 @@
+/**
+ * Base API URL for Reality Defender.
+ * @constant {string}
+ */
 const API_BASE = 'https://api.prd.realitydefender.xyz/api';
 
+/**
+ * Vercel Serverless Function to poll for Reality Defender analysis results.
+ * @param {import('http').IncomingMessage} req - The incoming request.
+ * @param {import('http').ServerResponse} res - The outgoing response.
+ * @returns {Promise<void>} Resolves when the response is sent.
+ */
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
   

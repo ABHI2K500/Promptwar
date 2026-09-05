@@ -5,9 +5,24 @@ export const config = {
   },
 };
 
+/**
+ * Base API URL for Reality Defender.
+ * @constant {string}
+ */
 const API_BASE = 'https://api.prd.realitydefender.xyz/api';
+
+/**
+ * Maximum allowed payload size in bytes (10 MB).
+ * @constant {number}
+ */
 const MAX_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Reads and buffers the incoming HTTP request body.
+ * @param {import('http').IncomingMessage} request - The HTTP request object.
+ * @returns {Promise<Buffer>} The buffered request body.
+ * @throws {Error} If the payload exceeds MAX_BYTES.
+ */
 function readBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -22,10 +37,21 @@ function readBody(request) {
   });
 }
 
+/**
+ * Sanitizes a filename to prevent path traversal or injection.
+ * @param {string} value - The raw filename string.
+ * @returns {string} The sanitized filename.
+ */
 function safeName(value = 'upload') {
   return value.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200) || 'upload';
 }
 
+/**
+ * Vercel Serverless Function to initialize Reality Defender analysis.
+ * @param {import('http').IncomingMessage} req - The incoming request.
+ * @param {import('http').ServerResponse} res - The outgoing response.
+ * @returns {Promise<void>} Resolves when the response is sent.
+ */
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   

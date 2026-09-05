@@ -17,11 +17,13 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=optional" rel="stylesheet">
   </head>
   <body>
+    <a href="#top" class="skip-link" id="skip-to-content">Skip to main content</a>
+    <noscript><p style="padding:2rem;text-align:center;color:#fff;background:#1a1a2e;">VERITAS requires JavaScript to perform media forensic analysis. Please enable JavaScript to continue.</p></noscript>
     <div id="initial-loader">
-      <div class="loader-content"><img src="/logo.jpg" class="brand-logo" alt="Veritas Logo" style="display:inline-block; vertical-align: middle; margin-right: 12px;">VERITAS<br><small>INITIALIZING SECURE ENVIRONMENT</small></div>
+      <div class="loader-content"><img src="/logo.jpg" class="brand-logo" alt="Veritas Logo" loading="lazy" width="24" height="24" style="display:inline-block; vertical-align: middle; margin-right: 12px;">VERITAS<br><small>INITIALIZING SECURE ENVIRONMENT</small></div>
     </div>
     <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
-    <header class="nav"><a class="brand" href="#top" aria-label="VERITAS home"><img src="/logo.jpg" class="brand-logo" alt="Veritas Logo"> VERITAS</a><nav><a href="#method">Method</a><a href="#limits">Limitations</a><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☼</span><span class="theme-copy">Light</span></button><button class="text-button" id="demo-nav">Try demo</button></nav></header>
+    <header class="nav"><a class="brand" href="#top" aria-label="VERITAS home"><img src="/logo.jpg" class="brand-logo" alt="Veritas Logo" loading="lazy" width="24" height="24"> VERITAS</a><nav><a href="#method">Method</a><a href="#limits">Limitations</a><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="false"><span class="theme-icon" aria-hidden="true">☼</span><span class="theme-copy">Light</span></button><button class="text-button" id="demo-nav">Try demo</button></nav></header>
     <main id="top">
       <section class="hero">
         <div class="eyebrow"><i></i> Evidence-led media verification</div>
@@ -67,6 +69,6 @@
       <section id="limits" class="trust"><div><div class="section-kicker">DESIGNED FOR HUMILITY</div><h2>What VERITAS can<br>and cannot tell you.</h2></div><div><p>Media can look real and still be misleading. Metadata can be missing for harmless reasons. New generators can evade detectors.</p><p>VERITAS helps you make a better decision by making the available evidence legible—and its gaps visible.</p></div></section>
     </main><footer><a class="brand" href="#top"><span class="brand-mark">V</span> VERITAS</a><span>© 2026 · Evidence-led, not certainty-led.</span><span>Built for responsible verification</span></footer>
     <dialog id="modal"><button class="modal-close" aria-label="Close">×</button><div class="modal-frame" id="modal-media"><div class="face-box"><span>SIMULATED REGION</span></div></div><h3 id="modal-title">Frame comparison</h3><p id="modal-copy">This visual marker is part of the selected demo case and is not a live detector heatmap.</p></dialog>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/main.js" defer></script>
   </body>
 </html>

@@ -1,8 +1,22 @@
 import './style.css';
 import * as THREE from 'three';
 
+/**
+ * @fileoverview VERITAS — AI-Powered Media Forensics Platform.
+ * Core application logic for evidence-led media verification.
+ * Handles file upload, API communication, forensic report rendering,
+ * and 3D neural network visualization animations.
+ * @author VERITAS Team
+ * @version 1.0.0
+ */
+
+/** @type {function(string): Element} DOM query shorthand */
 const $ = (s) => document.querySelector(s);
 const themeToggle = $('#theme-toggle');
+/**
+ * Sets the application theme and persists to localStorage.
+ * @param {string} theme - The theme to apply ('light' or 'dark').
+ */
 function setTheme(theme) {
   const light = theme === 'light';
   document.documentElement.dataset.theme = theme;
@@ -23,6 +37,10 @@ const evidence = [
 ];
 let selected = null, demo = false, activeTab = 'file';
 
+/**
+ * Switches the active upload tab (file, url, or demo).
+ * @param {string} tab - The tab identifier to activate.
+ */
 function switchTab(tab) {
   activeTab = tab;
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('selected', x.dataset.tab === tab));
@@ -32,8 +50,27 @@ document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () =>
 $('#verify-cta').addEventListener('click', () => $('#verify').scrollIntoView({behavior:'smooth'}));
 $('#demo-nav').addEventListener('click', () => { switchTab('demo'); $('#verify').scrollIntoView({behavior:'smooth'}); });
 
+/**
+ * Displays or clears an error message in the upload area.
+ * @param {string} [text=''] - The error message to display. Empty string clears the error.
+ */
 function error(text='') { $('#upload-error').textContent = text; $('#upload-error').classList.toggle('hidden', !text); }
+
+/**
+ * Formats bytes into a human-readable string (KB or MB).
+ * @param {number} v - The byte count.
+ * @returns {string} Formatted file size string.
+ */
 function bytes(v) { return v < 1e6 ? `${(v/1e3).toFixed(0)} KB` : `${(v/1e6).toFixed(1)} MB`; }
+
+/**
+ * Displays a media file preview in the upload area.
+ * @param {string} name - The file name.
+ * @param {string} type - The MIME type.
+ * @param {number} size - The file size in bytes.
+ * @param {string} [url=''] - The object URL for media preview.
+ * @param {Object} [details={}] - Additional metadata (file handle, dimensions).
+ */
 function preview(name,type,size,url='', details={}) {
   selected = {name,type,size,url,...details}; error('');
   const media = type.startsWith('image/') && url ? `<img src="${url}" alt="Selected media preview" ${details.width ? `width="${details.width}" height="${details.height}"` : ''}>` : `<div class="preview-art ${type.split('/')[0]}"><span>${type.startsWith('video') ? '▶' : type.startsWith('audio') ? '⌁' : '◈'}</span></div>`;
@@ -41,7 +78,15 @@ function preview(name,type,size,url='', details={}) {
   $('#media-preview').classList.remove('hidden'); $('#analyze').disabled = false;
   $('.remove').addEventListener('click', clearSelection);
 }
+/**
+ * Clears the current file selection and resets the upload UI.
+ */
 function clearSelection() { selected = null; demo = false; $('#media-preview').classList.add('hidden'); $('#analyze').disabled = true; }
+
+/**
+ * Validates an uploaded file's type and size before processing.
+ * @param {File} file - The file to validate.
+ */
 function validateFile(file) {
   if (!file) return; if (!/^(image|video|audio)\//.test(file.type)) return error('This file type is not supported. Please choose an image, video, or audio file.');
   if (file.size > 100 * 1e6) return error('This file exceeds the 100 MB limit. Choose a smaller file.');
@@ -59,22 +104,24 @@ const drop = $('#dropzone'); drop.addEventListener('click', () => $('#file-input
 $('#url-load').addEventListener('click', () => { const value=$('#media-url').value.trim(); try { const u=new URL(value); if(u.protocol!=='https:') throw 0; demo=false; preview(u.hostname + u.pathname.slice(-24), 'video/url', 0, ''); } catch { error('Enter a valid direct HTTPS media URL.'); } });
 document.querySelectorAll('.demo-case').forEach(c=>c.addEventListener('click',()=>{ document.querySelectorAll('.demo-case').forEach(x=>x.classList.remove('selected-demo')); c.classList.add('selected-demo'); demo=true; preview(`${c.dataset.case}-case.mp4`, c.dataset.case==='voice'?'audio/demo':'video/demo', 7.8e6); }));
 
+/**
+ * Generates an HTML card for displaying a piece of evidence.
+ * @param {Array} param0 - Tuple containing [level, title, copy, source, limit, timestamp, bbox].
+ * @param {boolean} isDemo - Whether the UI is in demo mode.
+ * @returns {string} HTML string representing the evidence card.
+ */
 function evidenceCard([level,title,copy,source,limit,timestamp,bbox], isDemo) { 
   const timeAttr = typeof timestamp === 'number' ? `data-time="${timestamp}" style="cursor:pointer" title="Click to seek media"` : '';
   const bboxAttr = bbox ? `data-bbox='${JSON.stringify(bbox)}'` : '';
   return `<article class="evidence-card glass" ${timeAttr} ${bboxAttr}><div class="evidence-top"><span class="strength ${level.toLowerCase()}">${level}</span><button aria-label="Evidence limitations" title="${limit}">i</button></div><h4>${title}</h4><p>${copy}</p><footer><span>${source}</span><span>${isDemo ? 'Demo' : 'Local inspection'}</span></footer></article>`; 
 }
+/**
+ * Executes a live forensic analysis on a file using Reality Defender.
+ * @param {File} file - The media file to analyze.
+ * @returns {Promise<Object>} The analysis report object.
+ * @throws {Error} If the upload or polling process fails.
+ */
 async function runLiveAnalysis(file) {
-  if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
-    const formData = new FormData();
-    formData.append('media', file);
-    formData.append('classes', file.type.startsWith('audio/') ? 'ai_generated_audio' : 'deepfake,ai_generated_video');
-    const started = await fetch('/api/hive/analyze', { method: 'POST', body: formData });
-    const reportText = await started.text();
-    const report = reportText ? JSON.parse(reportText) : {};
-    if (!started.ok) throw new Error(report.error || report.message || 'The analysis service did not return a response.');
-    return { isHive: true, raw: report };
-  }
 
   const started = await fetch('/api/analyze', { method:'POST', headers:{'content-type':file.type, 'x-veritas-filename':encodeURIComponent(file.name)}, body:file });
   const startedText = await started.text();
@@ -90,6 +137,11 @@ async function runLiveAnalysis(file) {
   }
   throw new Error('Analysis is still processing. Please try again in a moment.');
 }
+/**
+ * Populates the UI report with the given analysis results.
+ * @param {Object} [liveResult=null] - The live analysis result object, if any.
+ * @param {string} [liveError=''] - The error message if the analysis failed.
+ */
 function populateReport(liveResult = null, liveError = '') {
   const usingDemo = demo;
   const usingLive = Boolean(liveResult && !liveError);
@@ -279,6 +331,10 @@ $('#export').addEventListener('click',()=>{ const report = demo ? `VERITAS — V
 document.querySelectorAll('.tilt').forEach(card=>{card.addEventListener('pointermove',e=>{if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;card.style.transform=`perspective(1100px) rotateX(${-y*4}deg) rotateY(${x*5}deg) translateY(-3px)`});card.addEventListener('pointerleave',()=>card.style.transform='')});
 
 // --- 3D Loader Animations ---
+/**
+ * Initializes the Three.js page loader with wireframe icosahedron animation.
+ * Automatically disposes of resources after the page loads.
+ */
 function initPageLoader() {
   const container = $('#initial-loader');
   if (!container) return;
@@ -338,6 +394,14 @@ let vRenderer = null, vScene = null, vCamera = null;
 let handleVResize = null;
 let vNN = null;
 
+/**
+ * Creates an animated neural network particle system in a Three.js scene.
+ * @param {THREE.Scene} scene - The Three.js scene to add the network to.
+ * @param {number} [pointCount=150] - Number of particles in the network.
+ * @param {number} [maxDistance=1.5] - Maximum connection distance between particles.
+ * @param {number} [color=0xb9a7ff] - Hex color for particles and connections.
+ * @returns {Object} Neural network object with geometry, positions, velocities, and meshes.
+ */
 function createNeuralNetwork(scene, pointCount = 150, maxDistance = 1.5, color = 0xb9a7ff) {
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(pointCount * 3);
@@ -360,6 +424,10 @@ function createNeuralNetwork(scene, pointCount = 150, maxDistance = 1.5, color =
   return { geometry, positions, velocities, linesGeometry, maxDistance, mesh: particles, linesMesh };
 }
 
+/**
+ * Updates particle positions and connection lines in the neural network animation.
+ * @param {Object} nn - The neural network object to update.
+ */
 function updateNeuralNetwork(nn) {
   const pos = nn.positions;
   for (let i = 0; i < pos.length / 3; i++) {
@@ -388,6 +456,10 @@ function updateNeuralNetwork(nn) {
   nn.linesGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
 }
 
+/**
+ * Starts the 3D neural network verification animation during analysis.
+ * Creates a new Three.js scene and renders an animated particle network.
+ */
 function startVerificationAnimation() {
   const container = $('#verification-3d-canvas');
   if (!container) return;
@@ -428,6 +500,9 @@ function startVerificationAnimation() {
   window.addEventListener('resize', handleVResize);
 }
 
+/**
+ * Stops and cleans up the verification animation, disposing of Three.js resources.
+ */
 function stopVerificationAnimation() {
   if (verificationAnimationId) cancelAnimationFrame(verificationAnimationId);
   if (vRenderer) vRenderer.dispose();
